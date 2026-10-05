@@ -37,7 +37,9 @@ PRICES_PER_M = {
     "text-embedding-3-small": (0.02, 0.0),
     "text-embedding-3-large": (0.13, 0.0),
     "gemini-2.5-flash-lite": (0.10, 0.40),
-    # Gemini embedding pricing intentionally omitted: the current pricing page does not list gemini-embedding-001.
+    # Standard paid-tier estimates: ai.google.dev/gemini-api/docs/pricing (2026-10-05).
+    "gemini-3.5-flash-lite": (0.30, 2.50),
+    "gemini-embedding-001": (0.15, 0.0),
     "claude-opus-5-5": (4.00, 20.00),
     "claude-sonnet-5-5": (2.00, 10.00),
     "claude-haiku-4-5": (1.00, 5.00),
@@ -104,6 +106,7 @@ class MeteredLLM:
         self.embedding_model = f"{self.embed_provider}:{self.embed_model_id}"
         self._backend_name = self.embedding_model
         self.usage = Usage()
+        self._next_chat_at = 0.0
         self._chat_client: Any
         self._embed_client: Any
         if self.chat_provider == "anthropic":
@@ -116,6 +119,10 @@ class MeteredLLM:
 
     def chat(self, prompt: str, json_mode: bool = False) -> str:
         start = time.perf_counter()
+        if self.chat_provider == "gemini":
+            # Flash-Lite free tier: 15 requests/minute. Include pacing in measured latency.
+            time.sleep(max(0.0, self._next_chat_at - time.perf_counter()))
+            self._next_chat_at = time.perf_counter() + 4.2
         if self.chat_provider == "anthropic":
             text, model, tokens_in, tokens_out = self._chat_anthropic(prompt)
         else:
@@ -160,6 +167,17 @@ class MeteredLLM:
         start = time.perf_counter()
         response = self._embed_client.embeddings.create(model=self.embed_model_id, input=text)
         tokens = getattr(response.usage, "prompt_tokens", 0) or 0   # some OpenAI-compatible APIs omit usage
+        if self.embed_provider == "gemini" and response.usage is None:
+            # Google's compatible embedding endpoint omits usage; use its token counter.
+            import httpx
+
+            counted = httpx.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{self.embed_model_id}:countTokens",
+                headers={"x-goog-api-key": os.environ[PROVIDERS["gemini"]["key"]]},
+                json={"contents": [{"parts": [{"text": text}]}]}, timeout=30,
+            )
+            counted.raise_for_status()
+            tokens = counted.json()["totalTokens"]
         self.usage += Usage(1, tokens, 0, price(self.embed_model_id, tokens), time.perf_counter() - start)
         return [float(value) for value in response.data[0].embedding]
 
