@@ -1,6 +1,6 @@
 # Báo cáo Day 19 — Flat RAG vs GraphRAG
 
-**Họ tên:** Phạm Thanh Trung  **MSSV:** 2A2202602949  **Ngày:** 05/10/2026
+**Họ tên:** Phạm Thanh Trung  **MSSV:** 2A202602949  **Ngày:** 05/10/2026
 
 Chạy `python bench_kg.py --judge` trên Python 3.11.9, Neo4j 5.26.31. Hai pipeline dùng cùng Gemini 3.5 Flash-Lite, Gemini Embedding 001, top_k=3, chunk_size=800 và 176 chunk từ 18 Điều luật + 20 bài báo. Graph cuối có **202 node / 379 cạnh**, gồm Article 18, Clause 99, Crime 13, Case 12, Person 44, Substance 11, Location 5. Ontology dùng gợi ý, không xét bonus.
 
